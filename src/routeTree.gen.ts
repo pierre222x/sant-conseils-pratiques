@@ -10,33 +10,132 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedConfidentialiteRouteImport } from './routes/_authenticated.confidentialite'
+import { Route as AuthenticatedEvaluationRouteImport } from './routes/_authenticated.evaluation'
+import { Route as AuthenticatedHistoriqueRouteImport } from './routes/_authenticated.historique'
+import { Route as AuthenticatedPreventionRouteImport } from './routes/_authenticated.prevention'
+import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
+import { Route as AuthenticatedTableauDeBordRouteImport } from './routes/_authenticated.tableau-de-bord'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedConfidentialiteRoute =
+  AuthenticatedConfidentialiteRouteImport.update({
+    id: '/confidentialite',
+    path: '/confidentialite',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedEvaluationRoute = AuthenticatedEvaluationRouteImport.update({
+  id: '/evaluation',
+  path: '/evaluation',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedHistoriqueRoute = AuthenticatedHistoriqueRouteImport.update({
+  id: '/historique',
+  path: '/historique',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPreventionRoute = AuthenticatedPreventionRouteImport.update({
+  id: '/prevention',
+  path: '/prevention',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedProfilRoute = AuthenticatedProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTableauDeBordRoute =
+  AuthenticatedTableauDeBordRouteImport.update({
+    id: '/tableau-de-bord',
+    path: '/tableau-de-bord',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/confidentialite': typeof AuthenticatedConfidentialiteRoute
+  '/evaluation': typeof AuthenticatedEvaluationRoute
+  '/historique': typeof AuthenticatedHistoriqueRoute
+  '/prevention': typeof AuthenticatedPreventionRoute
+  '/profil': typeof AuthenticatedProfilRoute
+  '/tableau-de-bord': typeof AuthenticatedTableauDeBordRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/confidentialite': typeof AuthenticatedConfidentialiteRoute
+  '/evaluation': typeof AuthenticatedEvaluationRoute
+  '/historique': typeof AuthenticatedHistoriqueRoute
+  '/prevention': typeof AuthenticatedPreventionRoute
+  '/profil': typeof AuthenticatedProfilRoute
+  '/tableau-de-bord': typeof AuthenticatedTableauDeBordRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/confidentialite': typeof AuthenticatedConfidentialiteRoute
+  '/_authenticated/evaluation': typeof AuthenticatedEvaluationRoute
+  '/_authenticated/historique': typeof AuthenticatedHistoriqueRoute
+  '/_authenticated/prevention': typeof AuthenticatedPreventionRoute
+  '/_authenticated/profil': typeof AuthenticatedProfilRoute
+  '/_authenticated/tableau-de-bord': typeof AuthenticatedTableauDeBordRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/confidentialite'
+    | '/evaluation'
+    | '/historique'
+    | '/prevention'
+    | '/profil'
+    | '/tableau-de-bord'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/confidentialite'
+    | '/evaluation'
+    | '/historique'
+    | '/prevention'
+    | '/profil'
+    | '/tableau-de-bord'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/confidentialite'
+    | '/_authenticated/evaluation'
+    | '/_authenticated/historique'
+    | '/_authenticated/prevention'
+    | '/_authenticated/profil'
+    | '/_authenticated/tableau-de-bord'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +147,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/confidentialite': {
+      id: '/_authenticated/confidentialite'
+      path: '/confidentialite'
+      fullPath: '/confidentialite'
+      preLoaderRoute: typeof AuthenticatedConfidentialiteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/evaluation': {
+      id: '/_authenticated/evaluation'
+      path: '/evaluation'
+      fullPath: '/evaluation'
+      preLoaderRoute: typeof AuthenticatedEvaluationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/historique': {
+      id: '/_authenticated/historique'
+      path: '/historique'
+      fullPath: '/historique'
+      preLoaderRoute: typeof AuthenticatedHistoriqueRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/prevention': {
+      id: '/_authenticated/prevention'
+      path: '/prevention'
+      fullPath: '/prevention'
+      preLoaderRoute: typeof AuthenticatedPreventionRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/profil': {
+      id: '/_authenticated/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof AuthenticatedProfilRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/tableau-de-bord': {
+      id: '/_authenticated/tableau-de-bord'
+      path: '/tableau-de-bord'
+      fullPath: '/tableau-de-bord'
+      preLoaderRoute: typeof AuthenticatedTableauDeBordRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
+interface AuthenticatedRouteChildren {
+  AuthenticatedConfidentialiteRoute: typeof AuthenticatedConfidentialiteRoute
+  AuthenticatedEvaluationRoute: typeof AuthenticatedEvaluationRoute
+  AuthenticatedHistoriqueRoute: typeof AuthenticatedHistoriqueRoute
+  AuthenticatedPreventionRoute: typeof AuthenticatedPreventionRoute
+  AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
+  AuthenticatedTableauDeBordRoute: typeof AuthenticatedTableauDeBordRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedConfidentialiteRoute: AuthenticatedConfidentialiteRoute,
+  AuthenticatedEvaluationRoute: AuthenticatedEvaluationRoute,
+  AuthenticatedHistoriqueRoute: AuthenticatedHistoriqueRoute,
+  AuthenticatedPreventionRoute: AuthenticatedPreventionRoute,
+  AuthenticatedProfilRoute: AuthenticatedProfilRoute,
+  AuthenticatedTableauDeBordRoute: AuthenticatedTableauDeBordRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
