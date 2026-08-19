@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 import { analyseInputSchema } from "./analyse.types";
 import { contientUneDuree, parserReponseIA } from "./analyse.server-utils";
 import { detecterUrgences } from "./triage";
@@ -6,8 +7,8 @@ import { detecterUrgences } from "./triage";
 describe("orientation des symptômes", () => {
   test("un symptôme simple et complet permet une orientation", () => {
     const texte = "Mal de tête léger depuis deux jours, intensité 3/10, sans fièvre, sans vomissement et sans trouble de la vision";
-    expect(contientUneDuree(texte)).toBe(true);
-    expect(analyseInputSchema.safeParse({ symptomes: texte, intensite: 3 }).success).toBe(true);
+    assert.equal(contientUneDuree(texte), true);
+    assert.equal(analyseInputSchema.safeParse({ symptomes: texte, intensite: 3 }).success, true);
 
     const resultat = parserReponseIA(
       JSON.stringify({
@@ -21,11 +22,11 @@ describe("orientation des symptômes", () => {
       }),
       false,
     );
-    expect(resultat.statut).toBe("complete");
+    assert.equal(resultat.statut, "complete");
   });
 
   test("une durée absente est détectée", () => {
-    expect(contientUneDuree("J'ai un mal de tête léger sans fièvre")).toBe(false);
+    assert.equal(contientUneDuree("J'ai un mal de tête léger sans fièvre"), false);
   });
 
   test("une question déjà posée ne crée pas de boucle", () => {
@@ -35,7 +36,7 @@ describe("orientation des symptômes", () => {
       false,
       [question],
     );
-    expect(resultat.statut).toBe("error");
+    assert.equal(resultat.statut, "error");
   });
 
   test("les questions manquantes sont limitées à trois", () => {
@@ -43,11 +44,11 @@ describe("orientation des symptômes", () => {
       JSON.stringify({ statut: "needs_more_info", missingQuestions: ["Question 1 ?", "Question 2 ?", "Question 3 ?", "Question 4 ?"] }),
       false,
     );
-    expect(resultat.statut).toBe("needs_more_info");
-    if (resultat.statut === "needs_more_info") expect(resultat.missingQuestions).toHaveLength(3);
+    assert.equal(resultat.statut, "needs_more_info");
+    if (resultat.statut === "needs_more_info") assert.equal(resultat.missingQuestions.length, 3);
   });
 
   test("un signe d'urgence reste détecté immédiatement", () => {
-    expect(detecterUrgences("J'ai une douleur thoracique importante")).not.toHaveLength(0);
+    assert.notEqual(detecterUrgences("J'ai une douleur thoracique importante").length, 0);
   });
 });
