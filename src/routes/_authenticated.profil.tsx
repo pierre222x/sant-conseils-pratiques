@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/profil")({
 });
 
 const profilSchema = z.object({
-  display_name: z.string().trim().max(80).optional(),
+  display_name: z.string().trim().max(80),
   age: z.number().int().min(0).max(120).nullable(),
   antecedents: z.string().trim().max(500),
   allergies: z.string().trim().max(500),
