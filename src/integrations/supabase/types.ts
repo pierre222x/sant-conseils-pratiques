@@ -14,7 +14,120 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analysis_usage: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      evaluations: {
+        Row: {
+          age: number | null
+          causes: Json
+          conseils: Json
+          contexte: Json
+          created_at: string
+          duree: string | null
+          evolution: string | null
+          fiable: boolean
+          id: string
+          intensite: number | null
+          is_demo: boolean
+          professionnel: string | null
+          resume: string | null
+          signes_alerte: Json
+          symptomes: string
+          urgence: string
+          user_id: string
+        }
+        Insert: {
+          age?: number | null
+          causes?: Json
+          conseils?: Json
+          contexte?: Json
+          created_at?: string
+          duree?: string | null
+          evolution?: string | null
+          fiable?: boolean
+          id?: string
+          intensite?: number | null
+          is_demo?: boolean
+          professionnel?: string | null
+          resume?: string | null
+          signes_alerte?: Json
+          symptomes: string
+          urgence?: string
+          user_id: string
+        }
+        Update: {
+          age?: number | null
+          causes?: Json
+          conseils?: Json
+          contexte?: Json
+          created_at?: string
+          duree?: string | null
+          evolution?: string | null
+          fiable?: boolean
+          id?: string
+          intensite?: number | null
+          is_demo?: boolean
+          professionnel?: string | null
+          resume?: string | null
+          signes_alerte?: Json
+          symptomes?: string
+          urgence?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          age: number | null
+          allergies: string | null
+          antecedents: string | null
+          consent_save: boolean
+          created_at: string
+          display_name: string | null
+          id: string
+          medicaments: string | null
+          updated_at: string
+        }
+        Insert: {
+          age?: number | null
+          allergies?: string | null
+          antecedents?: string | null
+          consent_save?: boolean
+          created_at?: string
+          display_name?: string | null
+          id: string
+          medicaments?: string | null
+          updated_at?: string
+        }
+        Update: {
+          age?: number | null
+          allergies?: string | null
+          antecedents?: string | null
+          consent_save?: boolean
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          medicaments?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
