@@ -26,7 +26,7 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
 
     if ((countHeure ?? 0) >= 8 || (countJour ?? 0) >= 25) {
       return {
-        statut: "limite",
+        statut: "error",
         message:
           "Vous avez atteint la limite d'analyses autorisées. Réessayez plus tard ou consultez un professionnel de santé.",
       };
@@ -38,7 +38,7 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
     );
     if (drapeaux.length > 0) {
       return {
-        statut: "urgence",
+        statut: "urgent",
         drapeaux,
         message:
           "Des signes d'urgence ont été détectés. Appelez immédiatement les services d'urgence ou rendez-vous à l'hôpital le plus proche.",
@@ -48,7 +48,18 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
     // 3. Analyse par IA
     const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) {
-      return { statut: "non_configure" };
+      return { statut: "error", message: "Le service d'analyse n'est pas configuré pour le moment." };
+    }
+
+    const texteComplet = [
+      data.symptomes,
+      data.duree ?? "",
+      ...(data.complements ?? []).map(({ question, reponse }) => `${question} ${reponse}`),
+    ].join(" ");
+    const dureePresente = Boolean(data.duree?.trim()) || /\b(depuis|pendant|durant|il y a)\b|\b\d+\s*(h|heure|heures|jour|jours|semaine|semaines|mois|an|ans)\b/i.test(texteComplet);
+    const questionDuree = "Depuis combien de temps ressentez-vous ces symptômes ?";
+    if (!dureePresente && data.iteration === 0) {
+      return { statut: "needs_more_info", missingQuestions: [questionDuree] };
     }
 
     await supabase.from("analysis_usage").insert({ user_id: userId });
@@ -65,6 +76,8 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
         },
         body: JSON.stringify({
           model: "google/gemini-3.5-flash",
+          max_tokens: 1200,
+          response_format: { type: "json_object" },
           messages: [
             { role: "system", content: construirePrompt(sensible) },
             { role: "user", content: JSON.stringify(data) },
@@ -73,23 +86,25 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
       });
     } catch {
       return {
-        statut: "erreur",
+        statut: "error",
         message: "Le service d'analyse est momentanément injoignable. Vérifiez votre connexion et réessayez.",
       };
     }
 
     if (response.status === 429) {
-      return { statut: "erreur", message: "Le service d'analyse est saturé. Réessayez dans quelques minutes." };
-    }
-    if (response.status === 402) {
-      return { statut: "non_configure" };
+      return { statut: "error", message: "Le service d'analyse est saturé. Réessayez dans quelques minutes." };
     }
     if (!response.ok) {
-      return { statut: "erreur", message: "L'analyse n'a pas pu être réalisée. Veuillez réessayer." };
+      const erreur = (await response.json().catch(() => null)) as { message?: string; error?: { message?: string } } | null;
+      const message = erreur?.message ?? erreur?.error?.message;
+      return {
+        statut: "error",
+        message: message?.slice(0, 500) || "L'analyse n'a pas pu être réalisée. Veuillez réessayer.",
+      };
     }
 
     const json = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const contenu = json.choices?.[0]?.message?.content ?? "";
-    const resultat = parserReponseIA(contenu, sensible);
+    const resultat = parserReponseIA(contenu, sensible, data.questionsPosees ?? []);
     return resultat;
   });
