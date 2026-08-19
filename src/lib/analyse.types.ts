@@ -17,7 +17,7 @@ export const analyseInputSchema = z.object({
     .array(
       z.object({
         question: z.string().trim().min(3).max(300),
-        reponse: z.string().trim().min(1).max(500),
+        reponse: z.string().trim().min(1, "Répondez à chaque question complémentaire").max(500),
       }),
     )
     .max(3)

@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { analyseInputSchema, type AnalyseInput, type AnalyseResultat } from "./analyse.types";
 import { detecterUrgences, estGroupeSensible } from "./triage";
-import { construirePrompt, parserReponseIA } from "./analyse.server-utils";
+import { construirePrompt, contientUneDuree, parserReponseIA } from "./analyse.server-utils";
 
 export const analyserSymptomes = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -34,7 +34,12 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
 
     // 2. Détection des signes d'urgence AVANT toute analyse par IA
     const drapeaux = detecterUrgences(
-      [data.symptomes, data.evolution ?? "", data.reponses?.join(" ") ?? ""].join(" "),
+      [
+        data.symptomes,
+        data.evolution ?? "",
+        data.reponses?.join(" ") ?? "",
+        ...(data.complements ?? []).map(({ reponse }) => reponse),
+      ].join(" "),
     );
     if (drapeaux.length > 0) {
       return {
@@ -56,7 +61,7 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
       data.duree ?? "",
       ...(data.complements ?? []).map(({ question, reponse }) => `${question} ${reponse}`),
     ].join(" ");
-    const dureePresente = Boolean(data.duree?.trim()) || /\b(depuis|pendant|durant|il y a)\b|\b\d+\s*(h|heure|heures|jour|jours|semaine|semaines|mois|an|ans)\b/i.test(texteComplet);
+    const dureePresente = Boolean(data.duree?.trim()) || contientUneDuree(texteComplet);
     const questionDuree = "Depuis combien de temps ressentez-vous ces symptômes ?";
     if (!dureePresente && data.iteration === 0) {
       return { statut: "needs_more_info", missingQuestions: [questionDuree] };

@@ -32,13 +32,13 @@ export function parserReponseIA(
 ): AnalyseResultat {
   const match = contenu.match(/\{[\s\S]*\}/);
   if (!match) {
-    return { statut: "erreur", message: "La réponse du service d'analyse est illisible. Veuillez réessayer." };
+    return { statut: "error", message: "La réponse du service d'analyse est illisible. Veuillez réessayer." };
   }
   let brut: Record<string, unknown>;
   try {
     brut = JSON.parse(match[0]) as Record<string, unknown>;
   } catch {
-    return { statut: "erreur", message: "La réponse du service d'analyse est illisible. Veuillez réessayer." };
+    return { statut: "error", message: "La réponse du service d'analyse est illisible. Veuillez réessayer." };
   }
 
   const liste = (valeur: unknown): string[] =>
@@ -91,4 +91,10 @@ export function parserReponseIA(
     professionnel: texteLimite(brut["professionnel"], 250) || "Médecin généraliste",
     signesAlerte: liste(brut["signesAlerte"]),
   };
+}
+
+export function contientUneDuree(texte: string): boolean {
+  return /\b(depuis|pendant|durant|il y a)\b|\b\d+\s*(h|heure|heures|jour|jours|semaine|semaines|mois|an|ans)\b/i.test(
+    texte,
+  );
 }

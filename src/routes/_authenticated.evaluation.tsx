@@ -79,7 +79,7 @@ function Evaluation() {
       conseils: r.conseils,
       professionnel: r.professionnel,
       signes_alerte: r.signesAlerte,
-      fiable: r.fiable,
+      fiable: true,
     });
     if (error) toast.error("L'évaluation n'a pas pu être enregistrée.");
     else toast.success("Évaluation enregistrée dans votre historique privé.");
