@@ -13,24 +13,33 @@ export const analyseInputSchema = z.object({
   medicaments: z.string().trim().max(500).optional(),
   groupes: z.array(z.string().max(40)).max(10).optional(),
   reponses: z.array(z.string().max(300)).max(10).optional(),
+  complements: z
+    .array(
+      z.object({
+        question: z.string().trim().min(3).max(300),
+        reponse: z.string().trim().min(1, "Répondez à chaque question complémentaire").max(500),
+      }),
+    )
+    .max(3)
+    .optional(),
+  questionsPosees: z.array(z.string().trim().min(3).max(300)).max(3).optional(),
+  iteration: z.number().int().min(0).max(1).default(0),
 });
 
 export type AnalyseInput = z.infer<typeof analyseInputSchema>;
 
-export type AnalyseOk = {
-  statut: "ok";
+export type AnalyseComplete = {
+  statut: "complete";
   resume: string;
   urgence: NiveauUrgence;
   causes: string[];
   conseils: string[];
   professionnel: string;
   signesAlerte: string[];
-  fiable: boolean;
 };
 
 export type AnalyseResultat =
-  | AnalyseOk
-  | { statut: "urgence"; drapeaux: DrapeauRouge[]; message: string }
-  | { statut: "non_configure" }
-  | { statut: "limite"; message: string }
-  | { statut: "erreur"; message: string };
+  | AnalyseComplete
+  | { statut: "needs_more_info"; missingQuestions: string[] }
+  | { statut: "urgent"; drapeaux: DrapeauRouge[]; message: string }
+  | { statut: "error"; message: string };

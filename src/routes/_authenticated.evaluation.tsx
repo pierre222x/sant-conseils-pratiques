@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Loader2, Stethoscope } from "lucide-react";
+import { AlertCircle, Loader2, Stethoscope, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,8 +58,12 @@ function Evaluation() {
   const [enCours, setEnCours] = useState(false);
   const [resultat, setResultat] = useState<AnalyseResultat | null>(null);
   const [drapeauxLocaux, setDrapeauxLocaux] = useState<DrapeauRouge[]>([]);
+  const [questionsManquantes, setQuestionsManquantes] = useState<string[]>([]);
+  const [reponsesComplements, setReponsesComplements] = useState<string[]>([]);
+  const requeteEnCours = useRef(false);
+  const controleurRef = useRef<AbortController | null>(null);
 
-  const enregistrer = async (r: Extract<AnalyseResultat, { statut: "ok" }>) => {
+  const enregistrer = async (r: Extract<AnalyseResultat, { statut: "complete" }>) => {
     if (!user || !consentement) return;
     const { error } = await supabase.from("evaluations").insert({
       user_id: user.id,
@@ -75,7 +79,7 @@ function Evaluation() {
       conseils: r.conseils,
       professionnel: r.professionnel,
       signes_alerte: r.signesAlerte,
-      fiable: r.fiable,
+      fiable: true,
     });
     if (error) toast.error("L'évaluation n'a pas pu être enregistrée.");
     else toast.success("Évaluation enregistrée dans votre historique privé.");
@@ -83,6 +87,7 @@ function Evaluation() {
 
   const soumettre = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (requeteEnCours.current) return;
     setResultat(null);
 
     // 1. Détection immédiate des signes d'urgence, côté navigateur
@@ -104,27 +109,51 @@ function Evaluation() {
       medicaments: medicaments || undefined,
       groupes,
       reponses: reponses.filter(Boolean),
+      complements: questionsManquantes.map((question, index) => ({
+        question,
+        reponse: reponsesComplements[index] ?? "",
+      })),
+      questionsPosees: questionsManquantes,
+      iteration: questionsManquantes.length > 0 ? 1 : 0,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Veuillez vérifier vos réponses.");
       return;
     }
 
+    requeteEnCours.current = true;
     setEnCours(true);
+    const controleur = new AbortController();
+    controleurRef.current = controleur;
+    const delaiMaximum = window.setTimeout(() => controleur.abort("timeout"), 60_000);
     try {
-      const r = await analyser({ data: parsed.data });
+      const r = await analyser({ data: parsed.data, signal: controleur.signal });
       setResultat(r);
-      if (r.statut === "ok" && consentement) await enregistrer(r);
-    } catch {
+      if (r.statut === "needs_more_info") {
+        setQuestionsManquantes(r.missingQuestions.slice(0, 3));
+        setReponsesComplements(r.missingQuestions.map(() => ""));
+      } else if (r.statut === "complete") {
+        setQuestionsManquantes([]);
+        setReponsesComplements([]);
+        if (consentement) await enregistrer(r);
+      }
+    } catch (error) {
       setResultat({
-        statut: "erreur",
+        statut: "error",
         message:
-          "L'analyse a échoué. Vérifiez votre connexion internet ; si le problème persiste, votre session a peut-être expiré.",
+          error instanceof DOMException && error.name === "AbortError"
+            ? "L'analyse a été annulée ou a dépassé une minute. Vous pouvez réessayer."
+            : "L'analyse a échoué. Vérifiez votre connexion internet puis réessayez.",
       });
     } finally {
+      window.clearTimeout(delaiMaximum);
+      controleurRef.current = null;
+      requeteEnCours.current = false;
       setEnCours(false);
     }
   };
+
+  const annuler = () => controleurRef.current?.abort("user");
 
   return (
     <div className="space-y-6">
@@ -269,6 +298,29 @@ function Evaluation() {
               </div>
             </fieldset>
 
+            {questionsManquantes.length > 0 && (
+              <fieldset className="space-y-4 rounded-2xl border border-primary/40 bg-primary/5 p-4">
+                <legend className="px-2 text-sm font-semibold">Informations complémentaires nécessaires</legend>
+                {questionsManquantes.map((question, index) => (
+                  <div key={question} className="space-y-2">
+                    <Label htmlFor={`complement-${index}`}>{question}</Label>
+                    <Input
+                      id={`complement-${index}`}
+                      required
+                      maxLength={500}
+                      className="h-12 rounded-xl"
+                      value={reponsesComplements[index] ?? ""}
+                      onChange={(e) =>
+                        setReponsesComplements((precedentes) =>
+                          precedentes.map((reponse, i) => (i === index ? e.target.value : reponse)),
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+              </fieldset>
+            )}
+
             <fieldset className="space-y-4 rounded-2xl border border-border p-4">
               <legend className="px-2 text-sm font-medium">Quelques questions complémentaires</legend>
               {QUESTIONS.map((q, i) => (
@@ -305,6 +357,11 @@ function Evaluation() {
                 </>
               )}
             </Button>
+            {enCours && (
+              <Button type="button" variant="outline" onClick={annuler} className="h-12 w-full rounded-2xl">
+                <X className="size-4" aria-hidden /> Annuler l'analyse
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>
@@ -315,26 +372,11 @@ function Evaluation() {
 }
 
 function Resultat({ resultat }: { resultat: AnalyseResultat }) {
-  if (resultat.statut === "urgence") {
+  if (resultat.statut === "urgent") {
     return <AlerteUrgence drapeaux={resultat.drapeaux} message={resultat.message} />;
   }
 
-  if (resultat.statut === "non_configure") {
-    return (
-      <Card className="rounded-3xl border-destructive/40" role="alert">
-        <CardHeader>
-          <AlertCircle className="size-7 text-destructive" aria-hidden />
-          <CardTitle>Service d'analyse indisponible</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>Aucun résultat ne peut être produit pour le moment, afin de ne pas vous induire en erreur.</p>
-          <p className="text-muted-foreground">{APP_CONFIG.messageServiceNonConfigure}</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (resultat.statut === "limite" || resultat.statut === "erreur") {
+  if (resultat.statut === "error") {
     return (
       <Card className="rounded-3xl border-destructive/40" role="alert">
         <CardHeader>
@@ -346,16 +388,17 @@ function Resultat({ resultat }: { resultat: AnalyseResultat }) {
     );
   }
 
-  if (!resultat.fiable) {
+  if (resultat.statut === "needs_more_info") {
     return (
-      <Card className="rounded-3xl border-destructive/40" role="alert">
+      <Card className="rounded-3xl border-primary/40" role="status">
         <CardHeader>
-          <AlertCircle className="size-7 text-destructive" aria-hidden />
-          <CardTitle>Informations insuffisantes</CardTitle>
+          <AlertCircle className="size-7 text-primary" aria-hidden />
+          <CardTitle>Quelques précisions sont nécessaires</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <p>{APP_CONFIG.messageNonFiable}</p>
-          <MentionMedicale />
+        <CardContent className="text-sm">
+          <ul className="list-disc space-y-1 pl-5">
+            {resultat.missingQuestions.map((question) => <li key={question}>{question}</li>)}
+          </ul>
         </CardContent>
       </Card>
     );
