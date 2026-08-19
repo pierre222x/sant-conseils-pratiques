@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_authenticated/profil")({
       { property: "og:description", content: "Vos informations de santé restent privées et facultatives." },
     ],
   }),
-  component: Profil;
+  component: Profil,
 });
 
 const profilSchema = z.object({
