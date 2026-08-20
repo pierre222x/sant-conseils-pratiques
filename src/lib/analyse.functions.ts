@@ -81,7 +81,10 @@ export const analyserSymptomes = createServerFn({ method: "POST" })
         },
         body: JSON.stringify({
           model: "google/gemini-3.5-flash",
-          max_tokens: 1200,
+          // Le modèle consomme une partie du budget en raisonnement : une limite
+          // trop basse tronquait la réponse JSON (message « illisible »).
+          reasoning_effort: "low",
+          max_tokens: 4000,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: construirePrompt(sensible) },
