@@ -9,9 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MentionMedicale } from "@/components/MentionMedicale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { APP_CONFIG } from "@/config/santeclair";
 
 export const Route = createFileRoute("/_authenticated/profil")({
   head: () => ({
@@ -28,6 +30,7 @@ export const Route = createFileRoute("/_authenticated/profil")({
 const profilSchema = z.object({
   display_name: z.string().trim().max(80),
   age: z.number().int().min(0).max(120).nullable(),
+  pays: z.string().trim().max(60).nullable(),
   antecedents: z.string().trim().max(500),
   allergies: z.string().trim().max(500),
   medicaments: z.string().trim().max(500),
@@ -40,6 +43,7 @@ function Profil() {
   const [form, setForm] = useState({
     display_name: "",
     age: "",
+    pays: "",
     antecedents: "",
     allergies: "",
     medicaments: "",
@@ -63,6 +67,7 @@ function Profil() {
       setForm({
         display_name: data.display_name ?? "",
         age: data.age === null ? "" : String(data.age),
+        pays: data.pays ?? "",
         antecedents: data.antecedents ?? "",
         allergies: data.allergies ?? "",
         medicaments: data.medicaments ?? "",
@@ -77,6 +82,7 @@ function Profil() {
     const parsed = profilSchema.safeParse({
       display_name: form.display_name,
       age: form.age === "" ? null : Number(form.age),
+      pays: form.pays === "" ? null : form.pays,
       antecedents: form.antecedents,
       allergies: form.allergies,
       medicaments: form.medicaments,
@@ -154,6 +160,27 @@ function Profil() {
                   value={form.age}
                   onChange={(e) => setForm((f) => ({ ...f, age: e.target.value }))}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pays">Pays (facultatif)</Label>
+                <Select
+                  value={form.pays}
+                  onValueChange={(v) => setForm((f) => ({ ...f, pays: v }))}
+                >
+                  <SelectTrigger id="pays" className="h-12 rounded-xl">
+                    <SelectValue placeholder="Choisissez votre pays" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {APP_CONFIG.urgences.map((u) => (
+                      <SelectItem key={u.pays} value={u.pays}>
+                        {u.pays}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Sert à afficher les bons numéros d'urgence pendant une analyse.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="antecedents">Antécédents (facultatif)</Label>

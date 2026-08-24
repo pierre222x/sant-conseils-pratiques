@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertCircle, Loader2, Stethoscope, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { MentionMedicale } from "@/components/MentionMedicale";
 import { AlerteUrgence } from "@/components/AlerteUrgence";
+import { AideImmediate } from "@/components/AideImmediate";
 import { analyserSymptomes } from "@/lib/analyse.functions";
 import { detecterUrgences, GROUPES_SENSIBLES, LIBELLES_GROUPES, type DrapeauRouge } from "@/lib/triage";
 import { analyseInputSchema, type AnalyseResultat } from "@/lib/analyse.types";
@@ -54,6 +56,25 @@ function Evaluation() {
   const [groupes, setGroupes] = useState<string[]>([]);
   const [reponses, setReponses] = useState<string[]>(QUESTIONS.map(() => ""));
   const [consentement, setConsentement] = useState(false);
+  const [paysChoisi, setPaysChoisi] = useState<string | null>(null);
+
+  // Pays du profil, utilisé pour afficher le bon numéro d'urgence.
+  const { data: profil } = useQuery({
+    queryKey: ["profil-pays", user?.id],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("pays").maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const pays = paysChoisi ?? profil?.pays ?? null;
+
+  // Signes potentiellement graves détectés au fil de la saisie.
+  const drapeauxSaisie = useMemo(
+    () => detecterUrgences(`${symptomes} ${evolution} ${reponses.join(" ")}`),
+    [symptomes, evolution, reponses],
+  );
 
   const [enCours, setEnCours] = useState(false);
   const [resultat, setResultat] = useState<AnalyseResultat | null>(null);
@@ -167,6 +188,14 @@ function Evaluation() {
       <MentionMedicale />
 
       {drapeauxLocaux.length > 0 && <AlerteUrgence drapeaux={drapeauxLocaux} />}
+
+      {drapeauxSaisie.length > 0 && (
+        <AideImmediate
+          pays={pays}
+          onChoisirPays={setPaysChoisi}
+          motif={`Signe repéré : ${drapeauxSaisie[0]?.libelle.toLowerCase()}.`}
+        />
+      )}
 
       <Card className="rounded-3xl">
         <CardHeader>
