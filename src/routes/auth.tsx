@@ -50,6 +50,34 @@ async function envoyerLienVerification(mail: string) {
   return error;
 }
 
+function MessageOuVerifier({ email }: { email: string }) {
+  return (
+    <div className="space-y-3 text-sm leading-relaxed">
+      <p className="text-muted-foreground">
+        Un e-mail de vérification a été envoyé à{" "}
+        <span className="font-medium text-foreground">{email || "votre adresse"}</span>. Cliquez sur le lien pour
+        activer votre compte.
+      </p>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-foreground dark:border-amber-900/60 dark:bg-amber-950/40">
+        <p className="font-semibold">Où vérifier si vous ne le voyez pas :</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>la boîte de réception principale</li>
+          <li>le dossier Courriers indésirables / Spam</li>
+          <li>l’onglet Promotions, Mises à jour ou Autres (Gmail)</li>
+          <li>le dossier Junk (Outlook, Yahoo, iCloud)</li>
+        </ul>
+        <p className="mt-3 text-sm text-muted-foreground">
+          L’expéditeur peut s’appeler SantéClair, Lovable ou Supabase. Attendez une minute, puis actualisez.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function toastEmailEnvoye() {
+  toast.success("E-mail envoyé. S'il n'est pas dans la boîte de réception, ouvrez les courriers indésirables (spam).");
+}
+
 function PageAuth() {
   const navigate = useNavigate();
   const { user, chargement } = useAuth();
@@ -106,7 +134,7 @@ function PageAuth() {
         toast.error("Impossible d'envoyer l'e-mail de vérification. Réessayez.");
         return;
       }
-      toast.success("Un e-mail de vérification vient d'être envoyé.");
+      toastEmailEnvoye();
     })();
   }, [user, chargement, navigate, confirmerCompte]);
 
@@ -162,8 +190,10 @@ function PageAuth() {
       const nonConfirme =
         error.code === "email_not_confirmed" || error.message.toLowerCase().includes("email not confirmed");
       if (nonConfirme) {
-        toast.error("Confirmez d'abord votre adresse e-mail. Vérifiez votre boîte de réception.");
         setAttenteVerification(true);
+        const erreurEnvoi = await envoyerLienVerification(mail);
+        if (erreurEnvoi) toast.error("Confirmez d'abord votre e-mail. S'il n'arrive pas, regardez dans les indésirables.");
+        else toastEmailEnvoye();
         return;
       }
       toast.error("Connexion impossible. Vérifiez votre e-mail et votre mot de passe.");
@@ -171,8 +201,11 @@ function PageAuth() {
     }
     const { data: sessionActuelle } = await supabase.auth.getUser();
     if (sessionActuelle.user && !compteEstVerifie(sessionActuelle.user)) {
-      toast.error("Confirmez d'abord votre adresse e-mail. Vérifiez votre boîte de réception.");
       setAttenteVerification(true);
+      const erreurEnvoi = await envoyerLienVerification(mail);
+      await supabase.auth.signOut();
+      if (erreurEnvoi) toast.error("Confirmez d'abord votre e-mail. S'il n'arrive pas, regardez dans les indésirables.");
+      else toastEmailEnvoye();
       return;
     }
     await navigate({ to: "/tableau-de-bord" });
@@ -209,9 +242,11 @@ function PageAuth() {
     if (data.session) {
       const u = data.user ?? data.session.user;
       if (u && !compteEstVerifie(u)) {
-        setAttenteVerification(true);
-        toast.success("Un e-mail de vérification vient d'être envoyé.");
+        const erreurEnvoi = await envoyerLienVerification(mail);
         await supabase.auth.signOut();
+        setAttenteVerification(true);
+        if (erreurEnvoi) toast.error("Impossible d'envoyer l'e-mail. Réessayez, puis regardez dans les indésirables.");
+        else toastEmailEnvoye();
         return;
       }
       toast.success("Compte créé.");
@@ -219,11 +254,14 @@ function PageAuth() {
       return;
     }
     if (data.user && (data.user.identities?.length ?? 0) === 0) {
-      toast.error("Un compte existe déjà avec cette adresse.");
+      const erreurEnvoi = await envoyerLienVerification(mail);
+      setAttenteVerification(true);
+      if (erreurEnvoi) toast.error("Un compte existe déjà. S'il n'est pas confirmé, cherchez l'e-mail dans les indésirables.");
+      else toastEmailEnvoye();
       return;
     }
     setAttenteVerification(true);
-    toast.success("Un e-mail de vérification vient d'être envoyé.");
+    toastEmailEnvoye();
   };
 
   const renvoyerVerification = async () => {
@@ -233,10 +271,10 @@ function PageAuth() {
     const erreur = await envoyerLienVerification(mail);
     setEnCours(false);
     if (erreur) {
-      toast.error("Envoi impossible. Réessayez dans quelques minutes.");
+      toast.error("Envoi impossible. Réessayez dans quelques minutes, puis vérifiez les indésirables.");
       return;
     }
-    toast.success("Un nouvel e-mail de vérification a été envoyé.");
+    toastEmailEnvoye();
   };
 
   const recuperation = async (event: React.FormEvent) => {
@@ -252,7 +290,7 @@ function PageAuth() {
       toast.error("Envoi impossible. Réessayez plus tard.");
       return;
     }
-    toast.success("Si un compte existe, un e-mail de réinitialisation vient d'être envoyé.");
+    toast.success("Si un compte existe, un e-mail a été envoyé. Vérifiez aussi les courriers indésirables (spam).");
     setModeRecuperation(false);
   };
 
@@ -292,7 +330,7 @@ function PageAuth() {
           </CardTitle>
           <CardDescription>
             {attenteVerification
-              ? "Un lien de confirmation a été envoyé. Votre compte sera activé après ce clic."
+              ? "Le message peut arriver dans la boîte de réception ou dans les indésirables."
               : modeRecuperation
                 ? "Indiquez votre adresse e-mail pour recevoir un lien de réinitialisation."
                 : "Gratuit, sans publicité. Vos données restent privées."}
@@ -301,10 +339,7 @@ function PageAuth() {
         <CardContent>
           {attenteVerification ? (
             <div className="space-y-4">
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Ouvrez le message envoyé à <span className="font-medium text-foreground">{email}</span>, puis cliquez
-                sur le lien pour confirmer votre adresse. Pensez aussi à regarder dans les courriers indésirables.
-              </p>
+              <MessageOuVerifier email={email} />
               <Button
                 type="button"
                 disabled={enCours}
