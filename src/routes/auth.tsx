@@ -28,6 +28,10 @@ export const Route = createFileRoute("/auth")({
 const emailSchema = z.string().trim().email("Adresse e-mail invalide").max(255);
 const mdpSchema = z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères").max(128);
 
+function urlApresConfirmation() {
+  return `${window.location.origin}/auth`;
+}
+
 function PageAuth() {
   const navigate = useNavigate();
   const { user, chargement } = useAuth();
@@ -35,10 +39,37 @@ function PageAuth() {
   const [motDePasse, setMotDePasse] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [modeRecuperation, setModeRecuperation] = useState(false);
+  const [attenteVerification, setAttenteVerification] = useState(false);
 
   useEffect(() => {
     if (!chargement && user) void navigate({ to: "/tableau-de-bord" });
   }, [user, chargement, navigate]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const oauthErreur = params.get("error_description") || params.get("error");
+    if (oauthErreur) {
+      toast.error("Connexion Google annulée ou refusée. Vous pouvez réessayer.");
+    }
+
+    const tokenHash = params.get("token_hash");
+    const type = params.get("type");
+    if (!tokenHash || !type) return;
+
+    void (async () => {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: type as "email" | "signup" | "recovery" | "invite" | "magiclink" | "email_change",
+      });
+      if (error) {
+        toast.error("Le lien de vérification n'est plus valide. Demandez un nouvel e-mail.");
+        setAttenteVerification(true);
+        return;
+      }
+      toast.success("Adresse e-mail confirmée. Bienvenue.");
+    })();
+  }, []);
 
   const valider = () => {
     const e = emailSchema.safeParse(email);
@@ -57,6 +88,13 @@ function PageAuth() {
     const { error } = await supabase.auth.signInWithPassword({ email: mail, password: motDePasse });
     setEnCours(false);
     if (error) {
+      const nonConfirme =
+        error.code === "email_not_confirmed" || error.message.toLowerCase().includes("email not confirmed");
+      if (nonConfirme) {
+        toast.error("Confirmez d'abord votre adresse e-mail. Vérifiez votre boîte de réception.");
+        setAttenteVerification(true);
+        return;
+      }
       toast.error("Connexion impossible. Vérifiez votre e-mail et votre mot de passe.");
       return;
     }
@@ -73,22 +111,52 @@ function PageAuth() {
       return;
     }
     setEnCours(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: mail,
       password: m.data,
-      options: { emailRedirectTo: `${window.location.origin}/tableau-de-bord` },
+      options: { emailRedirectTo: urlApresConfirmation() },
     });
     setEnCours(false);
     if (error) {
+      const tropFaible =
+        error.code === "weak_password" || error.message.toLowerCase().includes("weak password");
       toast.error(
         error.message.includes("already registered")
           ? "Un compte existe déjà avec cette adresse."
-          : "Inscription impossible. Réessayez plus tard.",
+          : tropFaible
+            ? "Ce mot de passe est trop facile à deviner. Choisissez-en un plus unique."
+            : "Inscription impossible. Réessayez plus tard.",
       );
       return;
     }
-    toast.success("Compte créé. Vérifiez votre boîte e-mail si une confirmation est demandée.");
-    await navigate({ to: "/tableau-de-bord" });
+    if (data.session) {
+      toast.success("Compte créé.");
+      await navigate({ to: "/tableau-de-bord" });
+      return;
+    }
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      toast.error("Un compte existe déjà avec cette adresse.");
+      return;
+    }
+    setAttenteVerification(true);
+    toast.success("Un e-mail de vérification vient d'être envoyé.");
+  };
+
+  const renvoyerVerification = async () => {
+    const mail = valider();
+    if (!mail) return;
+    setEnCours(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: mail,
+      options: { emailRedirectTo: urlApresConfirmation() },
+    });
+    setEnCours(false);
+    if (error) {
+      toast.error("Envoi impossible. Réessayez dans quelques minutes.");
+      return;
+    }
+    toast.success("Un nouvel e-mail de vérification a été envoyé.");
   };
 
   const recuperation = async (event: React.FormEvent) => {
@@ -115,7 +183,11 @@ function PageAuth() {
     });
     if (result.error) {
       setEnCours(false);
-      toast.error("Connexion Google indisponible pour le moment.");
+      toast.error(
+        result.error.message.includes("Preview")
+          ? "Ouvrez l'application dans un nouvel onglet (pas dans l'aperçu Lovable), puis réessayez Google."
+          : "Connexion Google indisponible pour le moment.",
+      );
       return;
     }
     if (result.redirected) return;
@@ -131,15 +203,46 @@ function PageAuth() {
 
       <Card className="w-full max-w-md rounded-3xl ombre-douce">
         <CardHeader>
-          <CardTitle>{modeRecuperation ? "Mot de passe oublié" : "Accéder à mon espace"}</CardTitle>
+          <CardTitle>
+            {attenteVerification
+              ? "Vérifiez votre e-mail"
+              : modeRecuperation
+                ? "Mot de passe oublié"
+                : "Accéder à mon espace"}
+          </CardTitle>
           <CardDescription>
-            {modeRecuperation
-              ? "Indiquez votre adresse e-mail pour recevoir un lien de réinitialisation."
-              : "Gratuit, sans publicité. Vos données restent privées."}
+            {attenteVerification
+              ? "Un lien de confirmation a été envoyé. Votre compte sera activé après ce clic."
+              : modeRecuperation
+                ? "Indiquez votre adresse e-mail pour recevoir un lien de réinitialisation."
+                : "Gratuit, sans publicité. Vos données restent privées."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {modeRecuperation ? (
+          {attenteVerification ? (
+            <div className="space-y-4">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Ouvrez le message envoyé à <span className="font-medium text-foreground">{email}</span>, puis cliquez
+                sur le lien pour confirmer votre adresse. Pensez aussi à regarder dans les courriers indésirables.
+              </p>
+              <Button
+                type="button"
+                disabled={enCours}
+                onClick={() => void renvoyerVerification()}
+                className="h-12 w-full rounded-xl text-base"
+              >
+                Renvoyer l'e-mail de vérification
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full rounded-xl"
+                onClick={() => setAttenteVerification(false)}
+              >
+                Retour à la connexion
+              </Button>
+            </div>
+          ) : modeRecuperation ? (
             <form onSubmit={recuperation} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email-recup">Adresse e-mail</Label>
