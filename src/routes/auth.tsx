@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Logo } from "@/components/Logo";
@@ -12,6 +13,8 @@ import { APP_CONFIG } from "@/config/santeclair";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { useAuth } from "@/hooks/useAuth";
+import { compteEstVerifie, identitesGoogle, urlLienVerification } from "@/lib/compte-verifie";
+import { marquerEmailVerifie } from "@/lib/verification.functions";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -29,21 +32,83 @@ const emailSchema = z.string().trim().email("Adresse e-mail invalide").max(255);
 const mdpSchema = z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères").max(128);
 
 function urlApresConfirmation() {
-  return `${window.location.origin}/auth`;
+  return urlLienVerification();
+}
+
+async function envoyerLienVerification(mail: string) {
+  const redirectTo = urlLienVerification();
+  const { error: erreurResend } = await supabase.auth.resend({
+    type: "signup",
+    email: mail,
+    options: { emailRedirectTo: redirectTo },
+  });
+  if (!erreurResend) return null;
+  const { error } = await supabase.auth.signInWithOtp({
+    email: mail,
+    options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+  });
+  return error;
 }
 
 function PageAuth() {
   const navigate = useNavigate();
   const { user, chargement } = useAuth();
+  const confirmerCompte = useServerFn(marquerEmailVerifie);
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [modeRecuperation, setModeRecuperation] = useState(false);
   const [attenteVerification, setAttenteVerification] = useState(false);
+  const googleVerificationLancee = useRef(false);
 
   useEffect(() => {
-    if (!chargement && user) void navigate({ to: "/tableau-de-bord" });
+    if (chargement || !user || !compteEstVerifie(user)) return;
+    void navigate({ to: "/tableau-de-bord" });
   }, [user, chargement, navigate]);
+
+  useEffect(() => {
+    if (chargement || !user || compteEstVerifie(user)) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const depuisLienEmail =
+      params.get("verifie") === "1" ||
+      params.get("type") === "magiclink" ||
+      hash.get("type") === "magiclink";
+
+    if (depuisLienEmail) {
+      void (async () => {
+        try {
+          await confirmerCompte();
+          await supabase.auth.refreshSession();
+          toast.success("Adresse e-mail confirmée. Bienvenue.");
+          await navigate({ to: "/tableau-de-bord" });
+        } catch {
+          toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
+          setAttenteVerification(true);
+        }
+      })();
+      return;
+    }
+
+    if (!identitesGoogle(user) || googleVerificationLancee.current) return;
+    googleVerificationLancee.current = true;
+    const mail = user.email?.trim() ?? "";
+    if (mail) setEmail(mail);
+
+    void (async () => {
+      setEnCours(true);
+      const erreur = mail ? await envoyerLienVerification(mail) : new Error("E-mail manquant");
+      await supabase.auth.signOut();
+      setEnCours(false);
+      setAttenteVerification(true);
+      if (erreur) {
+        toast.error("Impossible d'envoyer l'e-mail de vérification. Réessayez.");
+        return;
+      }
+      toast.success("Un e-mail de vérification vient d'être envoyé.");
+    })();
+  }, [user, chargement, navigate, confirmerCompte]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -67,9 +132,15 @@ function PageAuth() {
         setAttenteVerification(true);
         return;
       }
+      try {
+        await confirmerCompte();
+        await supabase.auth.refreshSession();
+      } catch {
+        /* L'inscription e-mail suffit avec email_confirmed_at. */
+      }
       toast.success("Adresse e-mail confirmée. Bienvenue.");
     })();
-  }, []);
+  }, [confirmerCompte]);
 
   const valider = () => {
     const e = emailSchema.safeParse(email);
@@ -96,6 +167,12 @@ function PageAuth() {
         return;
       }
       toast.error("Connexion impossible. Vérifiez votre e-mail et votre mot de passe.");
+      return;
+    }
+    const { data: sessionActuelle } = await supabase.auth.getUser();
+    if (sessionActuelle.user && !compteEstVerifie(sessionActuelle.user)) {
+      toast.error("Confirmez d'abord votre adresse e-mail. Vérifiez votre boîte de réception.");
+      setAttenteVerification(true);
       return;
     }
     await navigate({ to: "/tableau-de-bord" });
@@ -130,6 +207,13 @@ function PageAuth() {
       return;
     }
     if (data.session) {
+      const u = data.user ?? data.session.user;
+      if (u && !compteEstVerifie(u)) {
+        setAttenteVerification(true);
+        toast.success("Un e-mail de vérification vient d'être envoyé.");
+        await supabase.auth.signOut();
+        return;
+      }
       toast.success("Compte créé.");
       await navigate({ to: "/tableau-de-bord" });
       return;
@@ -146,13 +230,9 @@ function PageAuth() {
     const mail = valider();
     if (!mail) return;
     setEnCours(true);
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: mail,
-      options: { emailRedirectTo: urlApresConfirmation() },
-    });
+    const erreur = await envoyerLienVerification(mail);
     setEnCours(false);
-    if (error) {
+    if (erreur) {
       toast.error("Envoi impossible. Réessayez dans quelques minutes.");
       return;
     }
@@ -191,7 +271,7 @@ function PageAuth() {
       return;
     }
     if (result.redirected) return;
-    await navigate({ to: "/tableau-de-bord" });
+    setEnCours(false);
   };
 
   return (

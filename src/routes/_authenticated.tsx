@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { EnTete } from "@/components/EnTete";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_CONFIG } from "@/config/santeclair";
+import { compteEstVerifie } from "@/lib/compte-verifie";
 
 export const Route = createFileRoute("/_authenticated")({
   component: EspaceProtege,
@@ -13,7 +14,8 @@ function EspaceProtege() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!chargement && !user) void navigate({ to: "/auth" });
+    if (chargement) return;
+    if (!user || !compteEstVerifie(user)) void navigate({ to: "/auth" });
   }, [user, chargement, navigate]);
 
   if (chargement) {
@@ -24,7 +26,7 @@ function EspaceProtege() {
     );
   }
 
-  if (!user) {
+  if (!user || !compteEstVerifie(user)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 fond-doux px-4 text-center">
         <p className="text-lg font-semibold">Votre session a expiré</p>

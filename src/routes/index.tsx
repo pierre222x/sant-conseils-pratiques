@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { HeartPulse, Lock, ShieldCheck, Stethoscope, Sparkles, Clock } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { EnTete } from "@/components/EnTete";
@@ -6,6 +7,8 @@ import { MentionMedicale } from "@/components/MentionMedicale";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { APP_CONFIG } from "@/config/santeclair";
+import { useAuth } from "@/hooks/useAuth";
+import { compteEstVerifie } from "@/lib/compte-verifie";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -35,6 +38,12 @@ const AVANTAGES = [
 ];
 
 function Accueil() {
+  const { user, chargement } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!chargement && user && !compteEstVerifie(user)) void navigate({ to: "/auth" });
+  }, [user, chargement, navigate]);
   return (
     <div className="min-h-screen fond-doux">
       <EnTete />

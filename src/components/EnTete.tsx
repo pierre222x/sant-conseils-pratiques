@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/santeclair";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { compteEstVerifie } from "@/lib/compte-verifie";
 
 const LIENS = [
   { to: "/tableau-de-bord", label: "Tableau de bord" },
@@ -18,6 +19,7 @@ const LIENS = [
 
 export function EnTete() {
   const { user } = useAuth();
+  const connecte = Boolean(user && compteEstVerifie(user));
   const navigate = useNavigate();
   const [ouvert, setOuvert] = useState(false);
 
@@ -35,7 +37,7 @@ export function EnTete() {
         </Link>
 
         <nav aria-label="Navigation principale" className="hidden items-center gap-1 lg:flex">
-          {user &&
+          {connecte &&
             LIENS.map((l) => (
               <Link
                 key={l.to}
@@ -49,7 +51,7 @@ export function EnTete() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {user ? (
+          {connecte ? (
             <>
               <Button variant="outline" size="sm" onClick={deconnexion} className="rounded-xl">
                 <LogOut className="size-4" aria-hidden />
@@ -74,7 +76,7 @@ export function EnTete() {
         </div>
       </div>
 
-      {user && ouvert && (
+      {connecte && ouvert && (
         <nav aria-label="Navigation mobile" className="border-t border-border bg-card px-4 py-2 lg:hidden">
           {LIENS.map((l) => (
             <Link
