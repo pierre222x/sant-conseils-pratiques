@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { APP_CONFIG } from "@/config/santeclair";
 import { useAuth } from "@/hooks/useAuth";
-import { compteEstVerifie } from "@/lib/compte-verifie";
+import { compteEstVerifie, consommerRetourGoogle } from "@/lib/compte-verifie";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -42,7 +42,14 @@ function Accueil() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!chargement && user && !compteEstVerifie(user)) void navigate({ to: "/auth" });
+    if (chargement) return;
+    if (user && !compteEstVerifie(user)) {
+      void navigate({ to: "/auth" });
+      return;
+    }
+    if (user && compteEstVerifie(user) && consommerRetourGoogle()) {
+      void navigate({ to: "/tableau-de-bord" });
+    }
   }, [user, chargement, navigate]);
   return (
     <div className="min-h-screen fond-doux">

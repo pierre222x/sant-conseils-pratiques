@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -13,7 +13,15 @@ import { APP_CONFIG } from "@/config/santeclair";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { useAuth } from "@/hooks/useAuth";
-import { compteEstVerifie, identitesGoogle, urlLienVerification } from "@/lib/compte-verifie";
+import {
+  compteEstVerifie,
+  consommerRetourGoogle,
+  effacerAttenteVerification,
+  enregistrerAttenteVerification,
+  lireAttenteVerification,
+  marquerRetourGoogle,
+  urlLienVerification,
+} from "@/lib/compte-verifie";
 import { marquerEmailVerifie } from "@/lib/verification.functions";
 
 export const Route = createFileRoute("/auth")({
@@ -87,12 +95,51 @@ function PageAuth() {
   const [enCours, setEnCours] = useState(false);
   const [modeRecuperation, setModeRecuperation] = useState(false);
   const [attenteVerification, setAttenteVerification] = useState(false);
-  const googleVerificationLancee = useRef(false);
+
+  const activerAttente = (mail: string) => {
+    if (mail) setEmail(mail);
+    setAttenteVerification(true);
+    enregistrerAttenteVerification(mail);
+  };
+
+  const quitterAttente = () => {
+    setAttenteVerification(false);
+    effacerAttenteVerification();
+  };
+
+  useEffect(() => {
+    if (chargement) return;
+    if (user && compteEstVerifie(user)) return;
+    const mail = lireAttenteVerification();
+    if (!mail) return;
+    setEmail(mail);
+    setAttenteVerification(true);
+  }, [chargement, user]);
 
   useEffect(() => {
     if (chargement || !user || !compteEstVerifie(user)) return;
+    consommerRetourGoogle();
+    effacerAttenteVerification();
     void navigate({ to: "/tableau-de-bord" });
   }, [user, chargement, navigate]);
+
+  useEffect(() => {
+    const auRetour = () => {
+      if (document.visibilityState !== "visible") return;
+      void supabase.auth.refreshSession().then(({ data }) => {
+        if (data.user && compteEstVerifie(data.user)) {
+          effacerAttenteVerification();
+          void navigate({ to: "/tableau-de-bord" });
+        }
+      });
+    };
+    document.addEventListener("visibilitychange", auRetour);
+    window.addEventListener("focus", auRetour);
+    return () => {
+      document.removeEventListener("visibilitychange", auRetour);
+      window.removeEventListener("focus", auRetour);
+    };
+  }, [navigate]);
 
   useEffect(() => {
     if (chargement || !user || compteEstVerifie(user)) return;
@@ -104,37 +151,19 @@ function PageAuth() {
       params.get("type") === "magiclink" ||
       hash.get("type") === "magiclink";
 
-    if (depuisLienEmail) {
-      void (async () => {
-        try {
-          await confirmerCompte();
-          await supabase.auth.refreshSession();
-          toast.success("Adresse e-mail confirmée. Bienvenue.");
-          await navigate({ to: "/tableau-de-bord" });
-        } catch {
-          toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
-          setAttenteVerification(true);
-        }
-      })();
-      return;
-    }
-
-    if (!identitesGoogle(user) || googleVerificationLancee.current) return;
-    googleVerificationLancee.current = true;
-    const mail = user.email?.trim() ?? "";
-    if (mail) setEmail(mail);
+    if (!depuisLienEmail) return;
 
     void (async () => {
-      setEnCours(true);
-      const erreur = mail ? await envoyerLienVerification(mail) : new Error("E-mail manquant");
-      await supabase.auth.signOut();
-      setEnCours(false);
-      setAttenteVerification(true);
-      if (erreur) {
-        toast.error("Impossible d'envoyer l'e-mail de vérification. Réessayez.");
-        return;
+      try {
+        await confirmerCompte();
+        await supabase.auth.refreshSession();
+        effacerAttenteVerification();
+        toast.success("Adresse e-mail confirmée. Bienvenue.");
+        await navigate({ to: "/tableau-de-bord" });
+      } catch {
+        toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
+        activerAttente(user.email?.trim() ?? "");
       }
-      toastEmailEnvoye();
     })();
   }, [user, chargement, navigate, confirmerCompte]);
 
@@ -157,7 +186,7 @@ function PageAuth() {
       });
       if (error) {
         toast.error("Le lien de vérification n'est plus valide. Demandez un nouvel e-mail.");
-        setAttenteVerification(true);
+        activerAttente(email);
         return;
       }
       try {
@@ -166,6 +195,7 @@ function PageAuth() {
       } catch {
         /* L'inscription e-mail suffit avec email_confirmed_at. */
       }
+      effacerAttenteVerification();
       toast.success("Adresse e-mail confirmée. Bienvenue.");
     })();
   }, [confirmerCompte]);
@@ -190,7 +220,7 @@ function PageAuth() {
       const nonConfirme =
         error.code === "email_not_confirmed" || error.message.toLowerCase().includes("email not confirmed");
       if (nonConfirme) {
-        setAttenteVerification(true);
+        activerAttente(mail);
         const erreurEnvoi = await envoyerLienVerification(mail);
         if (erreurEnvoi) toast.error("Confirmez d'abord votre e-mail. S'il n'arrive pas, regardez dans les indésirables.");
         else toastEmailEnvoye();
@@ -201,7 +231,7 @@ function PageAuth() {
     }
     const { data: sessionActuelle } = await supabase.auth.getUser();
     if (sessionActuelle.user && !compteEstVerifie(sessionActuelle.user)) {
-      setAttenteVerification(true);
+      activerAttente(mail);
       const erreurEnvoi = await envoyerLienVerification(mail);
       await supabase.auth.signOut();
       if (erreurEnvoi) toast.error("Confirmez d'abord votre e-mail. S'il n'arrive pas, regardez dans les indésirables.");
@@ -244,7 +274,7 @@ function PageAuth() {
       if (u && !compteEstVerifie(u)) {
         const erreurEnvoi = await envoyerLienVerification(mail);
         await supabase.auth.signOut();
-        setAttenteVerification(true);
+        activerAttente(mail);
         if (erreurEnvoi) toast.error("Impossible d'envoyer l'e-mail. Réessayez, puis regardez dans les indésirables.");
         else toastEmailEnvoye();
         return;
@@ -255,12 +285,12 @@ function PageAuth() {
     }
     if (data.user && (data.user.identities?.length ?? 0) === 0) {
       const erreurEnvoi = await envoyerLienVerification(mail);
-      setAttenteVerification(true);
+      activerAttente(mail);
       if (erreurEnvoi) toast.error("Un compte existe déjà. S'il n'est pas confirmé, cherchez l'e-mail dans les indésirables.");
       else toastEmailEnvoye();
       return;
     }
-    setAttenteVerification(true);
+    activerAttente(mail);
     toastEmailEnvoye();
   };
 
@@ -296,10 +326,12 @@ function PageAuth() {
 
   const google = async () => {
     setEnCours(true);
+    marquerRetourGoogle();
     const result = await lovable.auth.signInWithOAuth("google", {
       redirect_uri: window.location.origin,
     });
     if (result.error) {
+      consommerRetourGoogle();
       setEnCours(false);
       toast.error(
         result.error.message.includes("Preview")
@@ -352,7 +384,7 @@ function PageAuth() {
                 type="button"
                 variant="ghost"
                 className="w-full rounded-xl"
-                onClick={() => setAttenteVerification(false)}
+                onClick={quitterAttente}
               >
                 Retour à la connexion
               </Button>
