@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -18,9 +18,12 @@ import {
   consommerRetourGoogle,
   effacerAttenteVerification,
   enregistrerAttenteVerification,
+  identitesGoogle,
   lireAttenteVerification,
   marquerRetourGoogle,
+  marquerVerificationEnvoyee,
   urlLienVerification,
+  verificationDejaEnvoyee,
 } from "@/lib/compte-verifie";
 import { marquerEmailVerifie } from "@/lib/verification.functions";
 
@@ -43,8 +46,15 @@ function urlApresConfirmation() {
   return urlLienVerification();
 }
 
-async function envoyerLienVerification(mail: string) {
+async function envoyerLienVerification(mail: string, opts?: { google?: boolean }) {
   const redirectTo = urlLienVerification();
+  if (opts?.google) {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: mail,
+      options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+    });
+    return error;
+  }
   const { error: erreurResend } = await supabase.auth.resend({
     type: "signup",
     email: mail,
@@ -58,14 +68,20 @@ async function envoyerLienVerification(mail: string) {
   return error;
 }
 
-function MessageOuVerifier({ email }: { email: string }) {
+function MessageOuVerifier({ email, compteGoogle }: { email: string; compteGoogle?: boolean }) {
   return (
     <div className="space-y-3 text-sm leading-relaxed">
       <p className="text-muted-foreground">
-        Un e-mail de vérification a été envoyé à{" "}
-        <span className="font-medium text-foreground">{email || "votre adresse"}</span>. Cliquez sur le lien pour
-        activer votre compte.
+        Un e-mail de vérification SantéClair a été envoyé à{" "}
+        <span className="font-medium text-foreground">{email || "votre adresse"}</span>. Cliquez sur le lien dans ce
+        message pour activer votre compte.
       </p>
+      {compteGoogle ? (
+        <p className="rounded-2xl border border-border bg-secondary/60 p-3 text-sm text-foreground">
+          L’e-mail Google qui dit que vous avez partagé des infos avec SantéClair n’est pas le lien d’activation.
+          Ouvrez le message SantéClair, Lovable ou Supabase, puis cliquez sur le lien.
+        </p>
+      ) : null}
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-foreground dark:border-amber-900/60 dark:bg-amber-950/40">
         <p className="font-semibold">Où vérifier si vous ne le voyez pas :</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
@@ -95,6 +111,7 @@ function PageAuth() {
   const [enCours, setEnCours] = useState(false);
   const [modeRecuperation, setModeRecuperation] = useState(false);
   const [attenteVerification, setAttenteVerification] = useState(false);
+  const envoiGoogleLance = useRef(false);
 
   const activerAttente = (mail: string) => {
     if (mail) setEmail(mail);
@@ -103,13 +120,26 @@ function PageAuth() {
   };
 
   const quitterAttente = () => {
+    envoiGoogleLance.current = false;
     setAttenteVerification(false);
     effacerAttenteVerification();
+    void supabase.auth.signOut();
   };
 
   useEffect(() => {
     if (chargement) return;
     if (user && compteEstVerifie(user)) return;
+    if (user && !compteEstVerifie(user)) {
+      const mail = user.email?.trim() || lireAttenteVerification() || "";
+      if (mail) {
+        setEmail(mail);
+        setAttenteVerification(true);
+        enregistrerAttenteVerification(mail);
+      } else {
+        setAttenteVerification(true);
+      }
+      return;
+    }
     const mail = lireAttenteVerification();
     if (!mail) return;
     setEmail(mail);
@@ -156,16 +186,54 @@ function PageAuth() {
     void (async () => {
       try {
         await confirmerCompte();
-        await supabase.auth.refreshSession();
+      } catch {
+        /* L'inscription e-mail peut suffire avec email_confirmed_at. */
+      }
+      await supabase.auth.refreshSession();
+      const { data } = await supabase.auth.getUser();
+      if (data.user && compteEstVerifie(data.user)) {
         effacerAttenteVerification();
         toast.success("Adresse e-mail confirmée. Bienvenue.");
         await navigate({ to: "/tableau-de-bord" });
-      } catch {
-        toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
-        activerAttente(user.email?.trim() ?? "");
+        return;
       }
+      toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
+      activerAttente(user.email?.trim() ?? "");
     })();
   }, [user, chargement, navigate, confirmerCompte]);
+
+  useEffect(() => {
+    if (chargement || !user || compteEstVerifie(user)) return;
+    if (!identitesGoogle(user)) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    if (
+      params.get("verifie") === "1" ||
+      params.get("type") === "magiclink" ||
+      hash.get("type") === "magiclink" ||
+      params.get("token_hash")
+    ) {
+      return;
+    }
+
+    const mail = user.email?.trim() ?? "";
+    activerAttente(mail);
+    if (envoiGoogleLance.current || verificationDejaEnvoyee(mail)) return;
+    envoiGoogleLance.current = true;
+
+    void (async () => {
+      setEnCours(true);
+      const erreur = mail ? await envoyerLienVerification(mail, { google: true }) : new Error("E-mail manquant");
+      if (mail) marquerVerificationEnvoyee(mail);
+      setEnCours(false);
+      if (erreur) {
+        toast.error("Impossible d'envoyer l'e-mail de vérification. Réessayez, puis regardez dans les indésirables.");
+        return;
+      }
+      toastEmailEnvoye();
+    })();
+  }, [user, chargement]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -191,12 +259,18 @@ function PageAuth() {
       }
       try {
         await confirmerCompte();
-        await supabase.auth.refreshSession();
       } catch {
-        /* L'inscription e-mail suffit avec email_confirmed_at. */
+        /* L'inscription e-mail peut suffire avec email_confirmed_at. */
       }
-      effacerAttenteVerification();
-      toast.success("Adresse e-mail confirmée. Bienvenue.");
+      await supabase.auth.refreshSession();
+      const { data } = await supabase.auth.getUser();
+      if (data.user && compteEstVerifie(data.user)) {
+        effacerAttenteVerification();
+        toast.success("Adresse e-mail confirmée. Bienvenue.");
+        return;
+      }
+      toast.error("La confirmation a échoué. Demandez un nouvel e-mail.");
+      activerAttente(email);
     })();
   }, [confirmerCompte]);
 
@@ -231,9 +305,10 @@ function PageAuth() {
     }
     const { data: sessionActuelle } = await supabase.auth.getUser();
     if (sessionActuelle.user && !compteEstVerifie(sessionActuelle.user)) {
+      const google = identitesGoogle(sessionActuelle.user);
       activerAttente(mail);
-      const erreurEnvoi = await envoyerLienVerification(mail);
-      await supabase.auth.signOut();
+      const erreurEnvoi = await envoyerLienVerification(mail, { google });
+      if (!google) await supabase.auth.signOut();
       if (erreurEnvoi) toast.error("Confirmez d'abord votre e-mail. S'il n'arrive pas, regardez dans les indésirables.");
       else toastEmailEnvoye();
       return;
@@ -298,12 +373,13 @@ function PageAuth() {
     const mail = valider();
     if (!mail) return;
     setEnCours(true);
-    const erreur = await envoyerLienVerification(mail);
+    const erreur = await envoyerLienVerification(mail, { google: Boolean(user && identitesGoogle(user)) });
     setEnCours(false);
     if (erreur) {
       toast.error("Envoi impossible. Réessayez dans quelques minutes, puis vérifiez les indésirables.");
       return;
     }
+    marquerVerificationEnvoyee(mail);
     toastEmailEnvoye();
   };
 
@@ -371,7 +447,7 @@ function PageAuth() {
         <CardContent>
           {attenteVerification ? (
             <div className="space-y-4">
-              <MessageOuVerifier email={email} />
+              <MessageOuVerifier email={email} compteGoogle={Boolean(user && identitesGoogle(user))} />
               <Button
                 type="button"
                 disabled={enCours}

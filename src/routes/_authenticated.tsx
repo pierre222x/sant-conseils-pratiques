@@ -29,8 +29,10 @@ function EspaceProtege() {
   if (!user || !compteEstVerifie(user)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 fond-doux px-4 text-center">
-        <p className="text-lg font-semibold">Votre session a expiré</p>
-        <p className="text-sm text-muted-foreground">Reconnectez-vous pour accéder à votre espace.</p>
+        <p className="text-lg font-semibold">{user ? "Vérification de l'e-mail…" : "Votre session a expiré"}</p>
+        <p className="text-sm text-muted-foreground">
+          {user ? "Confirmez votre adresse pour accéder à votre espace." : "Reconnectez-vous pour accéder à votre espace."}
+        </p>
       </div>
     );
   }
